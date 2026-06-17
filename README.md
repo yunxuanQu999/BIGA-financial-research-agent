@@ -50,7 +50,7 @@ sector_main.py
 | LLM | DeepSeek V4 (via DMXAPI) |
 | Sector Data | AKShare → TongHuaSun Official Indices |
 | News Search | Tavily Search API |
-| Long-term Memory | Mem0 + Qdrant (local file mode, no Docker) |
+| Long-term Memory | Mem0 Cloud (set MEM0_API_KEY) / Local Qdrant (no Docker) |
 | Notification | Feishu Custom Bot Webhook |
 | Automation | GitHub Actions (free, cloud-based) |
 | PDF Parsing | LlamaParse (optional, for annual reports) |
@@ -82,6 +82,7 @@ Required keys:
 | `DEEPSEEK_API_KEY` | [dmxapi.cn](https://dmxapi.cn) or [platform.deepseek.com](https://platform.deepseek.com) |
 | `TAVILY_API_KEY` | [tavily.com](https://tavily.com) — free 1,000 requests/month |
 | `FEISHU_WEBHOOK_URL` | Feishu group → Settings → Bots → Add Bot → Custom Bot → Copy URL |
+| `MEM0_API_KEY` (optional) | [app.mem0.ai](https://app.mem0.ai) — enables cloud-persistent memory across devices |
 
 ### 3. Run
 
@@ -105,7 +106,7 @@ The workflow runs automatically every weekday at **14:30 CST** (06:30 UTC) witho
 To enable:
 1. Fork this repo
 2. Go to **Settings → Secrets and variables → Actions**
-3. Add these secrets: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `TAVILY_API_KEY`, `FEISHU_WEBHOOK_URL`
+3. Add these secrets: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `TAVILY_API_KEY`, `FEISHU_WEBHOOK_URL`, `MEM0_API_KEY` (optional)
 4. Go to **Actions** tab → **A股板块轮动日报** → **Run workflow** to test manually
 
 ---

@@ -50,7 +50,7 @@ sector_main.py
 | 大语言模型 | DeepSeek V4（通过 DMXAPI 调用）|
 | 板块数据 | AKShare → 同花顺官方行业板块指数 |
 | 新闻搜索 | Tavily Search API |
-| 长期记忆 | Mem0 + Qdrant（本地文件模式，无需 Docker）|
+| 长期记忆 | Mem0 云端（设置 MEM0_API_KEY）/ 本地 Qdrant（无需 Docker）|
 | 消息推送 | 飞书自定义机器人 Webhook |
 | 自动调度 | GitHub Actions（免费，云端运行）|
 | PDF 解析 | LlamaParse（可选，用于年报分析）|
@@ -82,6 +82,7 @@ cp .env.example .env
 | `DEEPSEEK_API_KEY` | [dmxapi.cn](https://dmxapi.cn) 注册后在控制台生成 |
 | `TAVILY_API_KEY` | [tavily.com](https://tavily.com) 注册，免费每月 1000 次 |
 | `FEISHU_WEBHOOK_URL` | 飞书群 → 群设置 → 机器人 → 添加机器人 → 自定义机器人 → 复制 Webhook 地址 |
+| `MEM0_API_KEY`（可选）| [app.mem0.ai](https://app.mem0.ai) 注册，设置后记忆跨设备/云端持久化 |
 
 ### 第三步：运行
 
@@ -111,6 +112,7 @@ python main.py --code 600519.SH --user 我的账号 --name 贵州茅台
    - `DEEPSEEK_MODEL`（填 `deepseek-v4-pro-guan`）
    - `TAVILY_API_KEY`
    - `FEISHU_WEBHOOK_URL`
+   - `MEM0_API_KEY`（可选，用于云端持久化记忆）
 4. 进入 **Actions** 标签 → **A股板块轮动日报** → **Run workflow** → 手动触发一次测试
 
 ---

@@ -31,4 +31,5 @@ jobs:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           LLAMA_CLOUD_API_KEY: ${{ secrets.LLAMA_CLOUD_API_KEY }}
+          MEM0_API_KEY: ${{ secrets.MEM0_API_KEY }}
         run: python sector_main.py --period 日 --user default_user
