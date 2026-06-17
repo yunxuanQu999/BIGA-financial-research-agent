@@ -23,6 +23,15 @@ E2B_API_KEY = os.getenv("E2B_API_KEY", "")
 # Memory
 MEM0_API_KEY = os.getenv("MEM0_API_KEY", "")
 
+# Observability
+LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY", "")
+LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "biga-financial-agent")
+
+if LANGSMITH_API_KEY:
+    os.environ["LANGSMITH_TRACING"] = "true"
+    os.environ["LANGSMITH_API_KEY"] = LANGSMITH_API_KEY
+    os.environ["LANGSMITH_PROJECT"] = LANGSMITH_PROJECT
+
 # Feishu
 FEISHU_WEBHOOK_URL = os.getenv("FEISHU_WEBHOOK_URL", "")
 
