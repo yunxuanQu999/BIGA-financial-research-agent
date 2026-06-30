@@ -2,7 +2,7 @@ name: A股板块轮动日报
 
 on:
   schedule:
-    - cron: '30 6 * * 1-5'  # UTC 06:30 = 北京时间 14:30，周一至周五
+    - cron: '30 0 * * 1-5'  # UTC 00:30 = 北京时间 08:30，周一至周五
   workflow_dispatch:          # 允许在 GitHub 网页上手动触发
 
 jobs:

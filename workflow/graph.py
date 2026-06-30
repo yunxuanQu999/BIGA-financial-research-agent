@@ -1,3 +1,4 @@
+import json
 from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -9,7 +10,8 @@ from tools.stock_data import get_stock_basic_info, get_stock_price, get_financia
 from tools.web_search import search_financial_news, search_company_news
 from tools.python_sandbox import run_python_code, KLINE_CODE_TEMPLATE
 from tools.feishu_webhook import send_research_report
-from memory.long_term import recall_user_context, recall_stock_history, remember_stock_judgment
+from memory.long_term import recall_user_profile, recall_stock_history, remember_stock_judgment, remember_task_history
+from rag.report_retriever import extract_citations, retrieve_report_context
 from loguru import logger
 import re
 
@@ -30,6 +32,8 @@ class ResearchState(TypedDict):
     news_info: str
 
     # Agent 2: RAG 分析（财报）
+    annual_report_context: str
+    annual_report_citations: str
     rag_analysis: str
 
     # Agent 3: 量化分析
@@ -40,6 +44,7 @@ class ResearchState(TypedDict):
     draft_report: str
     self_correction_needed: bool
     correction_reason: str
+    review_result: dict
     final_report: str
 
     # 迭代计数（防止无限纠错）
@@ -80,7 +85,7 @@ def info_collector_node(state: ResearchState) -> dict:
     news = search_company_news.invoke({"company_name": name, "days": 7})
 
     # 检索用户记忆
-    user_mem = recall_user_context(state["user_id"], f"{name} 投资分析")
+    user_mem = recall_user_profile(state["user_id"], f"{name} 投资分析 持仓 风险偏好")
     stock_hist = recall_stock_history(state["user_id"], ts_code)
 
     return {
@@ -97,12 +102,33 @@ def info_collector_node(state: ResearchState) -> dict:
 
 # ── Node 2: RAG 分析 Agent ────────────────────────────────────────────────────
 
+def report_retriever_node(state: ResearchState) -> dict:
+    logger.info(f"[RAG] 检索财报上下文 {state['company_name']}")
+    query = (
+        f"{state['company_name']} {state['ts_code']} 盈利能力 营收 净利润 "
+        "毛利率 现金流 负债 风险因素 管理层讨论"
+    )
+    context = retrieve_report_context(
+        company_name=state["company_name"],
+        ts_code=state["ts_code"],
+        query=query,
+        k=4,
+    )
+    citations = extract_citations(context)
+    return {
+        "annual_report_context": context,
+        "annual_report_citations": citations,
+        "messages": [AIMessage(content=f"财报 RAG 检索完成: {context[:100]}...")],
+    }
+
 RAG_SYSTEM = """你是一位专业的A股财务分析师。根据提供的信息，对公司基本面做深度分析。
 重点关注：
 1. 盈利能力（净利润、ROE、毛利率趋势）
 2. 估值水平（PE/PB 与历史和行业对比）
 3. 成长性（营收/利润增速）
 4. 风险因素（负债率、商誉、政策风险）
+若提供了财报 RAG 检索结果，请优先引用其中的经营数据、管理层讨论和风险因素；若未检索到财报，则基于结构化行情和财务指标分析。
+若使用了财报内容，请在关键句后用 [1]、[2] 等编号标注来源。
 请用专业但易懂的语言，约 300 字。"""
 
 def rag_analyst_node(state: ResearchState) -> dict:
@@ -119,6 +145,12 @@ def rag_analyst_node(state: ResearchState) -> dict:
 
 财务指标：
 {state['financial_info']}
+
+财报 RAG 检索结果：
+{state['annual_report_context']}
+
+可引用来源：
+{state['annual_report_citations'] or '暂无可引用来源'}
 
 用户背景（参考）：
 {state['user_memory']}
@@ -168,13 +200,48 @@ def quant_analyst_node(state: ResearchState) -> dict:
 
 # ── Node 4: 审查 & 汇总 Agent ─────────────────────────────────────────────────
 
-REVIEW_SYSTEM = """你是一位资深投研总监。你的职责是：
+REVIEW_SYSTEM = """你是一位资深投研总监和 critic agent。你的职责是：
 1. 汇总各 Agent 分析结果，生成最终投研简报
-2. 检查逻辑一致性：如"大跌但结论强烈推荐"这类矛盾
-3. 如发现矛盾，在报告末尾标注 [CORRECTION_NEEDED: 原因]
+2. 检查数据一致性、结论一致性、风险提示完整性、引用来源完整性
+3. 输出严格 JSON，不要输出 Markdown 代码块
 
-报告结构：核心观点 | 基本面 | 技术面 | 近期催化剂 | 投资建议 | 风险提示
-约 400 字。"""
+JSON Schema:
+{
+  "report": "核心观点 | 基本面 | 技术面 | 近期催化剂 | 投资建议 | 风险提示，约400字",
+  "needs_correction": false,
+  "correction_reason": "",
+  "checks": {
+    "data_consistency": "pass/fail",
+    "conclusion_consistency": "pass/fail",
+    "risk_warning": "pass/fail",
+    "citations": "pass/fail/not_applicable"
+  }
+}"""
+
+
+def _parse_review_json(content: str) -> dict:
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", content, flags=re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+    correction_match = re.search(r"\[CORRECTION_NEEDED:\s*(.+?)\]", content, re.IGNORECASE)
+    reason = correction_match.group(1).strip() if correction_match else ""
+    return {
+        "report": content,
+        "needs_correction": bool(reason),
+        "correction_reason": reason,
+        "checks": {
+            "data_consistency": "unknown",
+            "conclusion_consistency": "unknown",
+            "risk_warning": "unknown",
+            "citations": "unknown",
+        },
+    }
 
 def review_agent_node(state: ResearchState) -> dict:
     logger.info(f"[Agent4] 开始审查汇总 {state['company_name']}")
@@ -191,25 +258,29 @@ def review_agent_node(state: ResearchState) -> dict:
 === 最新新闻 ===
 {state['news_info']}
 
+=== 财报引用来源 ===
+{state['annual_report_citations'] or '暂无财报引用来源'}
+
 === 用户偏好 ===
 {state['user_memory']}
 
-请生成最终投研简报。如有逻辑矛盾，在末尾标注 [CORRECTION_NEEDED: 具体原因]。
+请生成最终投研简报，并完成结构化审查。
 """
     result = llm.invoke([SystemMessage(content=REVIEW_SYSTEM), HumanMessage(content=prompt)])
-    report = result.content
+    parsed = _parse_review_json(result.content)
+    report = str(parsed.get("report", result.content))
 
     # 检测是否需要自我纠错
     _NO_CORRECTION = ["未发现", "没有矛盾", "无矛盾", "逻辑一致", "不存在矛盾", "无需"]
-    correction_match = re.search(r"\[CORRECTION_NEEDED:\s*(.+?)\]", report, re.IGNORECASE)
-    correction_reason = correction_match.group(1).strip() if correction_match else ""
+    correction_reason = str(parsed.get("correction_reason", "")).strip()
     _trivial = any(kw in correction_reason for kw in _NO_CORRECTION)
-    needs_correction = bool(correction_match) and not _trivial and state.get("correction_count", 0) < 2
+    needs_correction = bool(parsed.get("needs_correction")) and not _trivial and state.get("correction_count", 0) < 2
 
     return {
         "draft_report": report,
         "self_correction_needed": needs_correction,
         "correction_reason": correction_reason,
+        "review_result": parsed,
         "correction_count": state.get("correction_count", 0) + (1 if needs_correction else 0),
         "messages": [AIMessage(content=f"审查完成，需要纠错: {needs_correction}")],
     }
@@ -232,6 +303,7 @@ def self_correction_node(state: ResearchState) -> dict:
 原始数据参考：
 - 行情: {state['price_info']}
 - 财务: {state['financial_info']}
+- 财报引用: {state.get('annual_report_citations', '')}
 - 基本面分析: {state['rag_analysis']}
 - 技术分析: {state['quant_analysis']}
 
@@ -272,6 +344,10 @@ def finalize_node(state: ResearchState) -> dict:
         state["ts_code"],
         f"投研简报摘要: {summary[:100]}"
     )
+    remember_task_history(
+        state["user_id"],
+        f"完成个股研究 {state['company_name']}({state['ts_code']}): {summary[:120]}"
+    )
 
     return {
         "final_report": report,
@@ -293,6 +369,7 @@ def build_research_graph() -> StateGraph:
     graph = StateGraph(ResearchState)
 
     graph.add_node("info_collector", info_collector_node)
+    graph.add_node("report_retriever", report_retriever_node)
     graph.add_node("rag_analyst", rag_analyst_node)
     graph.add_node("quant_analyst", quant_analyst_node)
     graph.add_node("review_agent", review_agent_node)
@@ -300,7 +377,8 @@ def build_research_graph() -> StateGraph:
     graph.add_node("finalize", finalize_node)
 
     graph.set_entry_point("info_collector")
-    graph.add_edge("info_collector", "rag_analyst")
+    graph.add_edge("info_collector", "report_retriever")
+    graph.add_edge("report_retriever", "rag_analyst")
     graph.add_edge("rag_analyst", "quant_analyst")
     graph.add_edge("quant_analyst", "review_agent")
     graph.add_conditional_edges(
@@ -338,12 +416,15 @@ def run_research(ts_code: str, user_id: str = "default_user", company_name: str 
         "price_info": "",
         "financial_info": "",
         "news_info": "",
+        "annual_report_context": "",
+        "annual_report_citations": "",
         "rag_analysis": "",
         "chart_result": "",
         "quant_analysis": "",
         "draft_report": "",
         "self_correction_needed": False,
         "correction_reason": "",
+        "review_result": {},
         "final_report": "",
         "correction_count": 0,
         "messages": [],

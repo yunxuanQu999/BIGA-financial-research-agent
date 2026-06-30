@@ -1,0 +1,20 @@
+[
+  {
+    "id": "stock_report_structure",
+    "task": "分析 600519.SH",
+    "expected_keywords": ["核心观点", "基本面", "技术面", "风险提示"],
+    "requires_citation": false
+  },
+  {
+    "id": "sector_rotation_structure",
+    "task": "今日哪些板块强？",
+    "expected_keywords": ["强势板块", "弱势板块", "策略报告", "风险"],
+    "requires_citation": false
+  },
+  {
+    "id": "rag_report_grounding",
+    "task": "总结贵州茅台年报的风险因素",
+    "expected_keywords": ["风险", "来源"],
+    "requires_citation": true
+  }
+]

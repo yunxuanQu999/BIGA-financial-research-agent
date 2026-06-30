@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from config.settings import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from tools.sector_data import get_all_sectors_performance, get_sector_history, search_sector_news
 from tools.feishu_webhook import send_research_report
-from memory.long_term import recall_user_context, remember_user_preference
+from memory.long_term import recall_user_context, remember_task_history, remember_user_preference
 from loguru import logger
 
 
@@ -176,6 +176,7 @@ def reporter_node(state: SectorState) -> dict:
     top3 = [a["name"] for a in analyses[:3]]
     try:
         remember_user_preference(user_id, f"{period}度分析：强势板块为{','.join(top3)}")
+        remember_task_history(user_id, f"{period}度板块轮动报告已生成，强势板块为{','.join(top3)}")
     except Exception:
         pass
 
